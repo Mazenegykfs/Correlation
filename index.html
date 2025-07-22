@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pearson Correlation Calculator - Dr Mazen Badawy</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jstat/1.9.4/jstat.min.js"></script>
+  <style>
+    body { padding: 20px; background-color: #f4f4f4; }
+    header {
+      background-color: #6fc6eb;
+      color: white;
+      padding: 20px;
+      font-size: 1.5rem;
+      position: relative;
+      text-align: center;
+    }
+    .logo-container {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+    }
+    .logo-container img {
+      height: 80px;
+      width: auto;
+    }
+    canvas { max-width: 100%; }
+    .results-section { margin-top: 30px; }
+    table { font-size: 0.9rem; border-collapse: collapse; width: 100%; }
+    th, td { text-align: center; vertical-align: middle; padding: 10px; border: 1px solid #ccc; }
+    .footnote { margin-top: 15px; font-size: 0.9rem; color: #333; }
+    .form-section .form-control, .form-section .form-select { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+<header>
+  Developed by Dr. Mazen Badawy - Doctorate of TEFL
+  <div class="logo-container">
+    <img src="00.png" alt="Logo">
+  </div>
+</header>
+
+<div class="container mt-4">
+  <div class="row mb-3 form-section">
+    <div class="col-md-4">
+      <label class="form-label">First Excel File:</label>
+      <input type="file" id="file1" accept=".xlsx, .xls" class="form-control" />
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Second Excel File:</label>
+      <input type="file" id="file2" accept=".xlsx, .xls" class="form-control" />
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Language:</label>
+      <select id="language" class="form-select">
+        <option value="English">English</option>
+        <option value="Arabic">Arabic</option>
+      </select>
+    </div>
+    <div class="col-md-2 d-flex align-items-end">
+      <button class="btn btn-primary w-100" onclick="calculateCorrelation()">Calculate Correlation</button>
+    </div>
+  </div>
+
+  <div class="results-section">
+    <h4>Pearson Correlation Table</h4>
+    <div class="table-responsive" id="result-table"></div>
+    <div class="text-end mt-2">
+      <button class="btn btn-success" onclick="exportToExcel()">Export to Excel</button>
+    </div>
+    <div class="footnote" id="footnote"></div>
+  </div>
+</div>
+
+<script>
+  let df1 = null, df2 = null;
+
+  function readExcel(file, callback) {
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { defval: null });
+      callback(json);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function calculateCorrelation() {
+    const f1 = document.getElementById("file1").files[0];
+    const f2 = document.getElementById("file2").files[0];
+    const lang = document.getElementById("language").value;
+
+    if (!f1 || !f2) {
+      alert("Please upload both Excel files.");
+      return;
+    }
+
+    readExcel(f1, data1 => {
+      readExcel(f2, data2 => {
+        df1 = data1;
+        df2 = data2;
+
+        const columns1 = Object.keys(df1[0]).filter(k => typeof df1[0][k] === 'number');
+        const columns2 = Object.keys(df2[0]).filter(k => typeof df2[0][k] === 'number');
+
+        let tableHTML = '<table class="table table-bordered" id="correlation-table"><thead><tr><th></th>' +
+          columns2.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+
+        columns1.forEach(c1 => {
+          tableHTML += `<tr><th>${c1}</th>`;
+          columns2.forEach(c2 => {
+            const x = df1.map(row => row[c1]);
+            const y = df2.map(row => row[c2]);
+            if (x.length !== y.length) {
+              tableHTML += '<td>N/A</td>';
+            } else {
+              const r = jStat.corrcoeff(x, y);
+              const t = r * Math.sqrt((x.length - 2) / (1 - r * r));
+              const p = 2 * (1 - jStat.studentt.cdf(Math.abs(t), x.length - 2));
+              let mark = '';
+              if (p < 0.01) mark = '**';
+              else if (p < 0.05) mark = '*';
+              tableHTML += `<td>${r.toFixed(3)}${mark}</td>`;
+            }
+          });
+          tableHTML += '</tr>';
+        });
+
+        tableHTML += '</tbody></table>';
+        document.getElementById("result-table").innerHTML = tableHTML;
+
+        const footnote = lang === "Arabic"
+          ? `**. الارتباط ذو دلالة إحصائية عند مستوى 0.01.<br>*. الارتباط ذو دلالة إحصائية عند مستوى 0.05.`
+          : `**. Correlation is significant at the 0.01 level (2-tailed).<br>*. Correlation is significant at the 0.05 level (2-tailed).`;
+
+        document.getElementById("footnote").innerHTML = footnote;
+      });
+    });
+  }
+
+  function exportToExcel() {
+    const lang = document.getElementById("language").value;
+    const table = document.querySelector("#result-table table");
+    if (!table) {
+      alert("No table to export.");
+      return;
+    }
+
+    const footnoteText = lang === "Arabic"
+      ? "**. الارتباط ذو دلالة إحصائية عند مستوى 0.01.\r\n*. الارتباط ذو دلالة إحصائية عند مستوى 0.05."
+      : "**. Correlation is significant at the 0.01 level (2-tailed).\r\n*. Correlation is significant at the 0.05 level (2-tailed).";
+
+    const worksheet = XLSX.utils.table_to_sheet(table);
+
+    const range = XLSX.utils.decode_range(worksheet['!ref']);
+    const colCount = range.e.c + 1;
+
+    const footnoteRow = range.e.r + 2;
+    const cellAddress = XLSX.utils.encode_cell({ r: footnoteRow, c: 0 });
+
+    worksheet[cellAddress] = {
+      t: 's',
+      v: footnoteText,
+      s: {
+        alignment: { wrapText: true, vertical: "top" }
+      }
+    };
+
+    worksheet['!merges'] = worksheet['!merges'] || [];
+    worksheet['!merges'].push({
+      s: { r: footnoteRow, c: 0 },
+      e: { r: footnoteRow, c: colCount - 1 }
+    });
+
+    worksheet['!rows'] = worksheet['!rows'] || [];
+    worksheet['!rows'][footnoteRow] = { hpt: 40 };
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, worksheet, "Correlation Results");
+
+    const filename = lang === "Arabic" ? "نتائج_الارتباط.xlsx" : "correlation_results.xlsx";
+    XLSX.writeFile(wb, filename);
+  }
+</script>
+
+</body>
+</html>
